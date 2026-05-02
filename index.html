@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Homework Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #0B0F19; color: #ffffff; }
+        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .gradient-text { background: linear-gradient(90deg, #38BDF8 0%, #A855F7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .gradient-bg { background: linear-gradient(90deg, #38BDF8 0%, #A855F7 100%); }
+        /* Hide scrollbar for clean app feel */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- MOCK DATA ---
+        const initialAssignments = [
+            { id: 1, title: 'Calculus Problem Set', class: 'Math', dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0], totalTime: 120, createdAt: new Date().toISOString() },
+            { id: 2, title: 'History Essay', class: 'History', dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0], totalTime: 300, createdAt: new Date().toISOString() }
+        ];
+
+        // --- MAIN APP COMPONENT ---
+        function App() {
+            const [activeTab, setActiveTab] = useState('home');
+            const [assignments, setAssignments] = useState(initialAssignments);
+            const [completedTasks, setCompletedTasks] = useState([]);
+
+            // Re-render icons on tab change
+            useEffect(() => {
+                lucide.createIcons();
+            }, [activeTab, assignments]);
+
+            // CORE FEATURE: Smart Scheduling Algorithm
+            const schedule = useMemo(() => {
+                let dailyTasks = {};
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                assignments.forEach(assign => {
+                    const due = new Date(assign.dueDate);
+                    due.setHours(0, 0, 0, 0);
+                    const daysUntilDue = Math.max(1, Math.ceil((due - today) / (1000 * 60 * 60 * 24)));
+                    
+                    // Break total time into chunks
+                    const dailyMinutes = Math.round(assign.totalTime / daysUntilDue);
+
+                    for (let i = 0; i < daysUntilDue; i++) {
+                        const taskDate = new Date(today);
+                        taskDate.setDate(today.getDate() + i);
+                        const dateStr = taskDate.toISOString().split('T')[0];
+
+                        if (!dailyTasks[dateStr]) dailyTasks[dateStr] = [];
+                        
+                        // Generate unique task ID based on assignment and date
+                        const taskId = `${assign.id}-${dateStr}`;
+                        
+                        dailyTasks[dateStr].push({
+                            id: taskId,
+                            assignmentId: assign.id,
+                            title: assign.title,
+                            class: assign.class,
+                            duration: dailyMinutes,
+                            isCompleted: completedTasks.includes(taskId)
+                        });
+                    }
+                });
+
+                // Sort dates
+                return Object.keys(dailyTasks).sort().map(date => ({
+                    date,
+                    tasks: dailyTasks[date]
+                }));
+            }, [assignments, completedTasks]);
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayTasks = schedule.find(d => d.date === todayStr)?.tasks || [];
+            const todayProgress = todayTasks.length > 0 
+                ? (todayTasks.filter(t => t.isCompleted).length / todayTasks.length) * 100 
+                : 100;
+
+            const toggleTask = (taskId) => {
+                setCompletedTasks(prev => 
+                    prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]
+                );
+            };
+
+            const addAssignment = (newAssign) => {
+                setAssignments([...assignments, { ...newAssign, id: Date.now(), createdAt: new Date().toISOString() }]);
+                setActiveTab('schedule');
+            };
+
+            return (
+                <div class="max-w-md mx-auto h-screen bg-[#0B0F19] relative overflow-hidden flex flex-col shadow-2xl">
+                    {/* Main Content Area */}
+                    <div class="flex-1 overflow-y-auto pb-20 p-6">
+                        
+                        {/* Header Branding */}
+                        <div class="flex items-center justify-center space-x-3 mb-8 pt-4">
+                            <img src="download.jpg" alt="Logo" class="w-12 h-12 rounded-xl shadow-lg" onerror="this.style.display='none'" />
+                            <div>
+                                <h1 class="text-xl font-bold tracking-tight">Smart Homework</h1>
+                                <p class="text-xs tracking-[0.2em] text-gray-400 font-semibold uppercase">Planner</p>
+                            </div>
+                        </div>
+
+                        {/* VIEWS */}
+                        {activeTab === 'home' && <HomeView todayTasks={todayTasks} progress={todayProgress} toggleTask={toggleTask} />}
+                        {activeTab === 'assignments' && <AssignmentsView assignments={assignments} addAssignment={addAssignment} />}
+                        {activeTab === 'schedule' && <ScheduleView schedule={schedule} toggleTask={toggleTask} todayStr={todayStr} />}
+                        {activeTab === 'progress' && <ProgressView schedule={schedule} />}
+                        {activeTab === 'settings' && <SettingsView />}
+                        
+                    </div>
+
+                    {/* Bottom Navigation */}
+                    <nav class="absolute bottom-0 w-full glass-panel border-t border-gray-800 rounded-t-3xl p-4 flex justify-between items-center px-6 z-50 bg-[#0B0F19]/90">
+                        <NavItem icon="home" label="Home" isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+                        <NavItem icon="clipboard-list" label="Tasks" isActive={activeTab === 'assignments'} onClick={() => setActiveTab('assignments')} />
+                        <NavItem icon="calendar" label="Schedule" isActive={activeTab === 'schedule'} onClick={() => setActiveTab('schedule')} />
+                        <NavItem icon="pie-chart" label="Progress" isActive={activeTab === 'progress'} onClick={() => setActiveTab('progress')} />
+                        <NavItem icon="settings" label="Settings" isActive={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+                    </nav>
+                </div>
+            );
+        }
+
+        // --- SUB-COMPONENTS ---
+
+        const NavItem = ({ icon, label, isActive, onClick }) => (
+            <div onClick={onClick} class={`flex flex-col items-center cursor-pointer transition-all duration-300 ${isActive ? 'text-[#38BDF8]' : 'text-gray-500 hover:text-gray-300'}`}>
+                <i data-lucide={icon} class={`w-6 h-6 mb-1 ${isActive ? 'stroke-2' : 'stroke-[1.5]'}`}></i>
+                <span class="text-[10px] font-medium">{label}</span>
+            </div>
+        );
+
+        const HomeView = ({ todayTasks, progress, toggleTask }) => (
+            <div class="space-y-6 animate-fade-in">
+                <div class="glass-panel p-6 rounded-2xl">
+                    <h2 class="text-gray-400 text-sm font-medium mb-1">Today's Outlook</h2>
+                    <p class="text-2xl font-bold mb-4">{progress === 100 ? "You're all set! 🎉" : "Stay on track. 🚀"}</p>
+                    
+                    <div class="w-full bg-gray-800 rounded-full h-3 mb-2">
+                        <div class="gradient-bg h-3 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                    </div>
+                    <p class="text-xs text-gray-400 text-right">{Math.round(progress)}% Completed</p>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold mb-3">Today's Chunks</h3>
+                    {todayTasks.length === 0 ? (
+                        <div class="text-center text-gray-500 py-8 glass-panel rounded-2xl">No tasks scheduled for today. Enjoy your break!</div>
+                    ) : (
+                        <div class="space-y-3">
+                            {todayTasks.map(task => (
+                                <TaskCard key={task.id} task={task} toggleTask={toggleTask} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+
+        const AssignmentsView = ({ assignments, addAssignment }) => {
+            const [isAdding, setIsAdding] = useState(false);
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                addAssignment({
+                    title: formData.get('title'),
+                    class: formData.get('class'),
+                    dueDate: formData.get('dueDate'),
+                    totalTime: parseInt(formData.get('totalTime'))
+                });
+                setIsAdding(false);
+            };
+
+            if (isAdding) {
+                return (
+                    <div class="animate-fade-in space-y-4">
+                        <h2 class="text-xl font-bold">New Assignment</h2>
+                        <form onSubmit={handleSubmit} class="space-y-4 glass-panel p-6 rounded-2xl">
+                            <div>
+                                <label class="text-sm text-gray-400 block mb-1">Title</label>
+                                <input required name="title" type="text" class="w-full bg-gray-800 rounded-xl p-3 text-white border border-gray-700 focus:border-[#38BDF8] outline-none" placeholder="e.g. Read Chapter 4" />
+                            </div>
+                            <div>
+                                <label class="text-sm text-gray-400 block mb-1">Class</label>
+                                <input required name="class" type="text" class="w-full bg-gray-800 rounded-xl p-3 text-white border border-gray-700 focus:border-[#38BDF8] outline-none" placeholder="e.g. Science" />
+                            </div>
+                            <div class="flex space-x-4">
+                                <div class="flex-1">
+                                    <label class="text-sm text-gray-400 block mb-1">Due Date</label>
+                                    <input required name="dueDate" type="date" class="w-full bg-gray-800 rounded-xl p-3 text-white border border-gray-700 focus:border-[#38BDF8] outline-none" />
+                                </div>
+                                <div class="flex-1">
+                                    <label class="text-sm text-gray-400 block mb-1">Est. Time (mins)</label>
+                                    <input required name="totalTime" type="number" min="5" class="w-full bg-gray-800 rounded-xl p-3 text-white border border-gray-700 focus:border-[#38BDF8] outline-none" placeholder="120" />
+                                </div>
+                            </div>
+                            <div class="pt-4 flex space-x-3">
+                                <button type="button" onClick={() => setIsAdding(false)} class="flex-1 py-3 rounded-xl font-semibold bg-gray-800 text-white hover:bg-gray-700 transition">Cancel</button>
+                                <button type="submit" class="flex-1 py-3 rounded-xl font-semibold gradient-bg text-white shadow-lg">Save & Chunk</button>
+                            </div>
+                        </form>
+                    </div>
+                );
+            }
+
+            return (
+                <div class="animate-fade-in space-y-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">All Assignments</h2>
+                        <button onClick={() => setIsAdding(true)} class="gradient-bg w-10 h-10 rounded-full flex items-center justify-center shadow-lg hover:opacity-90 transition">
+                            <i data-lucide="plus" class="text-white w-5 h-5"></i>
+                        </button>
+                    </div>
+                    {assignments.map(a => (
+                        <div key={a.id} class="glass-panel p-4 rounded-xl flex justify-between items-center">
+                            <div>
+                                <h4 class="font-bold">{a.title}</h4>
+                                <p class="text-xs text-gray-400">{a.class} • Due: {a.dueDate}</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-sm font-semibold gradient-text">{a.totalTime} min</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const ScheduleView = ({ schedule, toggleTask, todayStr }) => (
+            <div class="animate-fade-in space-y-6">
+                <h2 class="text-xl font-bold mb-4">Smart Schedule</h2>
+                {schedule.map(day => (
+                    <div key={day.date} class="space-y-3">
+                        <div class="flex items-center space-x-2">
+                            <h3 class={`text-sm font-semibold ${day.date === todayStr ? 'text-[#38BDF8]' : 'text-gray-400'}`}>
+                                {day.date === todayStr ? 'Today' : new Date(day.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                            </h3>
+                            <div class="flex-1 h-px bg-gray-800"></div>
+                            <span class="text-xs text-gray-500">{day.tasks.reduce((acc, t) => acc + t.duration, 0)} mins total</span>
+                        </div>
+                        {day.tasks.map(task => (
+                            <TaskCard key={task.id} task={task} toggleTask={toggleTask} />
+                        ))}
+                    </div>
+                ))}
+            </div>
+        );
+
+        const ProgressView = ({ schedule }) => {
+            const totalTasks = schedule.reduce((acc, day) => acc + day.tasks.length, 0);
+            const completed = schedule.reduce((acc, day) => acc + day.tasks.filter(t => t.isCompleted).length, 0);
+            const percentage = totalTasks === 0 ? 0 : Math.round((completed / totalTasks) * 100);
+
+            return (
+                <div class="animate-fade-in space-y-6 flex flex-col items-center pt-8">
+                    <div class="relative w-48 h-48 flex items-center justify-center glass-panel rounded-full border-4 border-gray-800">
+                        <div class="absolute inset-0 rounded-full border-4 border-[#A855F7]" style={{ clipPath: `polygon(0 0, 100% 0, 100% ${percentage}%, 0 ${percentage}%)`, opacity: 0.8 }}></div>
+                        <div class="text-center z-10">
+                            <p class="text-5xl font-bold">{percentage}%</p>
+                            <p class="text-xs text-gray-400 mt-1">Total Accuracy</p>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full grid grid-cols-2 gap-4 mt-8">
+                        <div class="glass-panel p-4 rounded-2xl text-center">
+                            <p class="text-2xl font-bold text-[#38BDF8]">3</p>
+                            <p class="text-xs text-gray-400">Day Streak 🔥</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl text-center">
+                            <p class="text-2xl font-bold text-[#A855F7]">{completed}/{totalTasks}</p>
+                            <p class="text-xs text-gray-400">Chunks Done ✅</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const SettingsView = () => (
+            <div class="animate-fade-in space-y-4">
+                <h2 class="text-xl font-bold mb-6">Settings</h2>
+                <div class="glass-panel rounded-2xl overflow-hidden divide-y divide-gray-800">
+                    <div class="p-4 flex justify-between items-center hover:bg-gray-800/50 cursor-pointer">
+                        <span class="font-medium">Profile</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-gray-500"></i>
+                    </div>
+                    <div class="p-4 flex justify-between items-center hover:bg-gray-800/50 cursor-pointer">
+                        <span class="font-medium">Notifications</span>
+                        <div class="w-10 h-5 bg-[#38BDF8] rounded-full relative">
+                            <div class="w-4 h-4 bg-white rounded-full absolute right-0.5 top-0.5 shadow"></div>
+                        </div>
+                    </div>
+                    <div class="p-4 flex justify-between items-center hover:bg-gray-800/50 cursor-pointer">
+                        <span class="font-medium">Dark Mode Default</span>
+                        <div class="w-10 h-5 bg-[#38BDF8] rounded-full relative">
+                            <div class="w-4 h-4 bg-white rounded-full absolute right-0.5 top-0.5 shadow"></div>
+                        </div>
+                    </div>
+                </div>
+                <button class="w-full mt-6 py-4 rounded-xl font-bold text-red-400 glass-panel border-red-500/20 hover:bg-red-500/10 transition">
+                    Log Out
+                </button>
+            </div>
+        );
+
+        const TaskCard = ({ task, toggleTask }) => (
+            <div onClick={() => toggleTask(task.id)} class={`glass-panel p-4 rounded-xl flex items-center cursor-pointer transition-all ${task.isCompleted ? 'opacity-50' : 'hover:border-[#38BDF8]/50'}`}>
+                <div class={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 transition-colors ${task.isCompleted ? 'bg-[#A855F7] border-[#A855F7]' : 'border-gray-500'}`}>
+                    {task.isCompleted && <i data-lucide="check" class="w-4 h-4 text-white"></i>}
+                </div>
+                <div class="flex-1">
+                    <h4 class={`font-bold text-sm ${task.isCompleted ? 'line-through text-gray-400' : 'text-white'}`}>{task.title}</h4>
+                    <p class="text-xs text-gray-400">{task.class}</p>
+                </div>
+                <div class="bg-gray-800 px-3 py-1 rounded-lg">
+                    <span class="text-xs font-semibold">{task.duration} min</span>
+                </div>
+            </div>
+        );
+
+        // Render App
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
