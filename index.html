@@ -3,451 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Homework Planner - Elite</title>
-    
+    <title>TaskFlow | Elite Planner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/framer-motion@10.16.4/dist/framer-motion.js"></script>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            background-color: #F8FAFC; /* Light gray/blue background */
-            color: #0F172A; 
-            -webkit-tap-highlight-color: transparent;
-        }
-        /* Premium Glassmorphism for Light Mode */
-        .glass-panel { 
-            background: rgba(255, 255, 255, 0.7); 
-            backdrop-filter: blur(16px); 
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.8); 
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
-        }
-        .gradient-text { 
-            background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent; 
-        }
-        .gradient-bg { 
-            background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%); 
-        }
-        ::-webkit-scrollbar { display: none; }
-        .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #FAFAFA; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); }
     </style>
 </head>
-<body class="antialiased selection:bg-blue-200 selection:text-blue-900">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect } = React;
+        const { motion } = FramerMotion;
 
         function App() {
-            // --- PERSISTENT STATE ---
-            // Load data from localStorage or default to empty
-            const [activeTab, setActiveTab] = useState('home');
-            const [assignments, setAssignments] = useState(() => JSON.parse(localStorage.getItem('mason_hw_assignments')) || []);
-            const [completedTasks, setCompletedTasks] = useState(() => JSON.parse(localStorage.getItem('mason_hw_completed')) || []);
-            const [xp, setXp] = useState(() => JSON.parse(localStorage.getItem('mason_hw_xp')) || 0);
+            const [view, setView] = useState('dashboard');
+            const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('tf_tasks')) || []);
+            const [events, setEvents] = useState(() => JSON.parse(localStorage.getItem('tf_events')) || []);
 
-            // Save to localStorage whenever data changes
-            useEffect(() => { localStorage.setItem('mason_hw_assignments', JSON.stringify(assignments)); }, [assignments]);
-            useEffect(() => { localStorage.setItem('mason_hw_completed', JSON.stringify(completedTasks)); }, [completedTasks]);
-            useEffect(() => { localStorage.setItem('mason_hw_xp', JSON.stringify(xp)); }, [xp]);
-
-            // Re-render icons on state changes
-            useEffect(() => { lucide.createIcons(); }, [activeTab, assignments, completedTasks]);
-
-            // --- GAMIFICATION LOGIC ---
-            const currentLevel = Math.floor(xp / 100) + 1;
-            const xpProgress = xp % 100;
-
-            // --- CORE ALGORITHM: SMART SCHEDULING ---
-            const schedule = useMemo(() => {
-                let dailyTasks = {};
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                assignments.forEach(assign => {
-                    const due = new Date(assign.dueDate);
-                    due.setHours(0, 0, 0, 0);
-                    // If due today or past, daysUntilDue is 1
-                    const daysUntilDue = Math.max(1, Math.ceil((due - today) / (1000 * 60 * 60 * 24)));
-                    
-                    const dailyMinutes = Math.round(assign.totalTime / daysUntilDue);
-
-                    for (let i = 0; i < daysUntilDue; i++) {
-                        const taskDate = new Date(today);
-                        taskDate.setDate(today.getDate() + i);
-                        const dateStr = taskDate.toISOString().split('T')[0];
-
-                        if (!dailyTasks[dateStr]) dailyTasks[dateStr] = [];
-                        
-                        const taskId = `${assign.id}-${dateStr}`;
-                        dailyTasks[dateStr].push({
-                            id: taskId,
-                            assignmentId: assign.id,
-                            title: assign.title,
-                            class: assign.class,
-                            duration: dailyMinutes,
-                            isCompleted: completedTasks.includes(taskId)
-                        });
-                    }
-                });
-
-                return Object.keys(dailyTasks).sort().map(date => ({
-                    date,
-                    tasks: dailyTasks[date]
-                }));
-            }, [assignments, completedTasks]);
-
-            const todayStr = new Date().toISOString().split('T')[0];
-            const todayTasks = schedule.find(d => d.date === todayStr)?.tasks || [];
-            const completedToday = todayTasks.filter(t => t.isCompleted).length;
-            const todayProgress = todayTasks.length > 0 ? (completedToday / todayTasks.length) * 100 : (assignments.length > 0 ? 100 : 0);
-
-            // --- ACTIONS ---
-            const toggleTask = (taskId) => {
-                const isCompleting = !completedTasks.includes(taskId);
-                
-                if (isCompleting) {
-                    setCompletedTasks([...completedTasks, taskId]);
-                    setXp(prev => prev + 15); // +15 XP for completing a chunk
-                    
-                    // Check if this completes the day
-                    if (todayTasks.length > 0 && completedToday + 1 === todayTasks.length) {
-                        triggerConfetti();
-                    }
-                } else {
-                    setCompletedTasks(completedTasks.filter(id => id !== taskId));
-                    setXp(prev => Math.max(0, prev - 15)); // Remove XP if unchecked
-                }
-            };
-
-            const addAssignment = (newAssign) => {
-                setAssignments([...assignments, { ...newAssign, id: Date.now(), createdAt: new Date().toISOString() }]);
-                setActiveTab('schedule');
-            };
-
-            const deleteAssignment = (id) => {
-                setAssignments(assignments.filter(a => a.id !== id));
-                // Clean up orphaned tasks
-                setCompletedTasks(completedTasks.filter(taskId => !taskId.startsWith(`${id}-`)));
-            };
-
-            const triggerConfetti = () => {
-                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#3B82F6', '#8B5CF6', '#FFFFFF'] });
-            };
+            useEffect(() => {
+                localStorage.setItem('tf_tasks', JSON.stringify(tasks));
+                localStorage.setItem('tf_events', JSON.stringify(events));
+                lucide.createIcons();
+            }, [tasks, events]);
 
             return (
-                <div class="max-w-md mx-auto h-screen relative overflow-hidden flex flex-col bg-slate-50 lg:shadow-2xl lg:rounded-3xl lg:h-[90vh] lg:my-[5vh] lg:border lg:border-gray-200">
-                    
-                    {/* TOP GREETING BAR */}
-                    <div class="pt-8 pb-4 px-6 glass-panel rounded-b-[2rem] z-10 sticky top-0">
-                        <div class="flex justify-between items-center mb-4">
-                            <div>
-                                <h1 class="text-2xl font-extrabold text-slate-800 tracking-tight">Hey, Mason <span class="animate-wave inline-block origin-bottom-right">👋</span></h1>
-                                <p class="text-sm font-medium text-slate-500">Let's crush it today.</p>
-                            </div>
-                            <div class="relative">
-                                {/* Using the requested image */}
-                                <img src="download.jpg" alt="Profile" class="w-12 h-12 rounded-full border-2 border-white shadow-md object-cover" onerror="this.src='https://ui-avatars.com/api/?name=Mason&background=3B82F6&color=fff'" />
-                                <div class="absolute -bottom-1 -right-1 bg-amber-400 text-amber-900 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-white shadow-sm">
-                                    Lvl {currentLevel}
-                                </div>
-                            </div>
+                <div className="max-w-md mx-auto h-screen bg-white shadow-2xl flex flex-col relative overflow-hidden">
+                    <header className="p-6 pt-10 flex justify-between items-center">
+                        <div>
+                            <p className="text-sm text-gray-500 font-medium">Good evening,</p>
+                            <h1 className="text-2xl font-bold text-gray-900">Mason</h1>
                         </div>
-                        {/* XP Progress Bar */}
-                        <div class="flex items-center space-x-3">
-                            <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                <div class="h-full gradient-bg transition-all duration-700 ease-out" style={{ width: `${xpProgress}%` }}></div>
-                            </div>
-                            <span class="text-xs font-bold text-slate-400">{xpProgress}/100 XP</span>
-                        </div>
-                    </div>
+                        <img src="download.jpg" className="w-10 h-10 rounded-full object-cover border-2 border-blue-500" />
+                    </header>
 
-                    {/* MAIN CONTENT AREA */}
-                    <div class="flex-1 overflow-y-auto pb-24 p-6">
-                        {activeTab === 'home' && <HomeView todayTasks={todayTasks} progress={todayProgress} toggleTask={toggleTask} assignmentsCount={assignments.length} setActiveTab={setActiveTab} />}
-                        {activeTab === 'assignments' && <AssignmentsView assignments={assignments} addAssignment={addAssignment} deleteAssignment={deleteAssignment} />}
-                        {activeTab === 'schedule' && <ScheduleView schedule={schedule} toggleTask={toggleTask} todayStr={todayStr} />}
-                        {activeTab === 'focus' && <FocusView />}
-                    </div>
+                    <main className="flex-1 overflow-y-auto px-6 pb-24">
+                        {view === 'dashboard' && <Dashboard tasks={tasks} />}
+                        {view === 'tasks' && <TasksView tasks={tasks} setTasks={setTasks} />}
+                        {view === 'calendar' && <CalendarView events={events} setEvents={setEvents} />}
+                        {view === 'focus' && <FocusView />}
+                    </main>
 
-                    {/* PREMIUM BOTTOM NAVIGATION */}
-                    <nav class="absolute bottom-4 left-4 right-4 glass-panel rounded-2xl p-2 flex justify-between items-center px-4 z-50">
-                        <NavItem icon="home" label="Home" isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-                        <NavItem icon="book-open" label="Tasks" isActive={activeTab === 'assignments'} onClick={() => setActiveTab('assignments')} />
-                        <NavItem icon="calendar-days" label="Schedule" isActive={activeTab === 'schedule'} onClick={() => setActiveTab('schedule')} />
-                        <NavItem icon="timer" label="Focus" isActive={activeTab === 'focus'} onClick={() => setActiveTab('focus')} />
+                    <nav className="absolute bottom-4 left-4 right-4 glass rounded-3xl p-3 flex justify-around border shadow-lg z-50">
+                        {['dashboard', 'tasks', 'calendar', 'focus'].map(tab => (
+                            <button key={tab} onClick={() => setView(tab)} className={`p-3 rounded-full ${view === tab ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>
+                                <i data-lucide={tab === 'dashboard' ? 'home' : tab === 'tasks' ? 'check-square' : tab === 'calendar' ? 'calendar' : 'timer'}></i>
+                            </button>
+                        ))}
                     </nav>
                 </div>
             );
         }
 
-        // --- VIEWS & COMPONENTS ---
-
-        const NavItem = ({ icon, label, isActive, onClick }) => (
-            <div onClick={onClick} class={`flex flex-col items-center justify-center w-14 h-14 rounded-xl cursor-pointer transition-all duration-300 ${isActive ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>
-                <i data-lucide={icon} class={`w-5 h-5 mb-1 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`}></i>
-                <span class="text-[9px] font-bold tracking-wide">{label}</span>
-            </div>
-        );
-
-        const HomeView = ({ todayTasks, progress, toggleTask, assignmentsCount, setActiveTab }) => {
-            if (assignmentsCount === 0) {
-                return (
-                    <div class="h-full flex flex-col items-center justify-center text-center animate-slide-up space-y-4 -mt-10">
-                        <div class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-2">
-                            <i data-lucide="sparkles" class="w-10 h-10 text-blue-500"></i>
-                        </div>
-                        <h2 class="text-2xl font-bold text-slate-800">Clean Slate!</h2>
-                        <p class="text-slate-500 text-sm max-w-[80%]">You have no homework logged. Add an assignment to let the smart scheduler break it down for you.</p>
-                        <button onClick={() => setActiveTab('assignments')} class="mt-4 px-6 py-3 gradient-bg text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all active:scale-95">
-                            Add First Assignment
-                        </button>
-                    </div>
-                );
-            }
-
+        function Dashboard({ tasks }) {
+            const dueToday = tasks.filter(t => !t.completed).length;
             return (
-                <div class="space-y-6 animate-slide-up">
-                    <div class="glass-panel p-6 rounded-2xl relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-4 opacity-10">
-                            <i data-lucide="target" class="w-24 h-24 text-blue-600"></i>
+                <div className="space-y-6">
+                    <div className="bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-200">
+                        <h2 className="text-lg font-semibold mb-2">You're on track! 🔥</h2>
+                        <div className="h-2 bg-blue-400 rounded-full w-full overflow-hidden">
+                            <div className="h-full bg-white w-2/3"></div>
                         </div>
-                        <h2 class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Daily Progress</h2>
-                        <p class="text-3xl font-extrabold text-slate-800 mb-6 z-10 relative">
-                            {progress === 100 ? "All Done! 🎉" : "Keep Pushing."}
-                        </p>
-                        <div class="w-full bg-slate-200 rounded-full h-4 mb-2 shadow-inner">
-                            <div class="gradient-bg h-4 rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${progress}%` }}></div>
-                        </div>
-                        <p class="text-xs font-bold text-slate-500 text-right">{Math.round(progress)}% Complete</p>
-                    </div>
-
-                    <div>
-                        <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center">
-                            <i data-lucide="zap" class="w-5 h-5 text-amber-500 mr-2"></i> Today's Chunks
-                        </h3>
-                        {todayTasks.length === 0 ? (
-                            <div class="text-center text-slate-500 py-10 glass-panel rounded-2xl border-dashed border-2 border-slate-300">
-                                <p class="font-medium">Nothing scheduled for today.</p>
-                                <p class="text-xs mt-1">Enjoy your free time!</p>
-                            </div>
-                        ) : (
-                            <div class="space-y-3">
-                                {todayTasks.map(task => (
-                                    <TaskCard key={task.id} task={task} toggleTask={toggleTask} />
-                                ))}
-                            </div>
-                        )}
+                        <p className="mt-2 text-sm opacity-80">{dueToday} tasks remaining for today</p>
                     </div>
                 </div>
             );
-        };
+        }
 
-        const AssignmentsView = ({ assignments, addAssignment, deleteAssignment }) => {
-            const [isAdding, setIsAdding] = useState(false);
-            
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                addAssignment({
-                    title: formData.get('title'),
-                    class: formData.get('class'),
-                    dueDate: formData.get('dueDate'),
-                    totalTime: parseInt(formData.get('totalTime'))
-                });
-                setIsAdding(false);
+        function TasksView({ tasks, setTasks }) {
+            const add = () => {
+                const title = prompt("Task title?");
+                if(title) setTasks([...tasks, { id: Date.now(), title, completed: false }]);
             };
-
-            if (isAdding) {
-                return (
-                    <div class="animate-slide-up space-y-4">
-                        <div class="flex justify-between items-center mb-2">
-                            <h2 class="text-2xl font-bold text-slate-800">New Assignment</h2>
-                            <button onClick={() => setIsAdding(false)} class="text-slate-400 hover:text-slate-700">
-                                <i data-lucide="x" class="w-6 h-6"></i>
-                            </button>
-                        </div>
-                        <form onSubmit={handleSubmit} class="space-y-5 glass-panel p-6 rounded-2xl">
-                            <div>
-                                <label class="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Task Title</label>
-                                <input required name="title" type="text" class="w-full bg-white rounded-xl p-4 text-slate-800 border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" placeholder="e.g. Read Chapter 4" />
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Class / Subject</label>
-                                <input required name="class" type="text" class="w-full bg-white rounded-xl p-4 text-slate-800 border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" placeholder="e.g. AP History" />
-                            </div>
-                            <div class="flex space-x-4">
-                                <div class="flex-1">
-                                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Due Date</label>
-                                    <input required name="dueDate" type="date" min={new Date().toISOString().split('T')[0]} class="w-full bg-white rounded-xl p-4 text-slate-800 border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
-                                </div>
-                                <div class="flex-1">
-                                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Est. Mins</label>
-                                    <input required name="totalTime" type="number" min="5" class="w-full bg-white rounded-xl p-4 text-slate-800 border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" placeholder="120" />
-                                </div>
-                            </div>
-                            <button type="submit" class="w-full mt-4 py-4 rounded-xl font-bold gradient-bg text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 active:scale-95 transition-all text-lg">
-                                Save & Chunk It
-                            </button>
-                        </form>
-                    </div>
-                );
-            }
-
             return (
-                <div class="animate-slide-up space-y-4">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-slate-800">Master List</h2>
-                        <button onClick={() => setIsAdding(true)} class="gradient-bg w-12 h-12 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 hover:scale-105 active:scale-95 transition-all">
-                            <i data-lucide="plus" class="text-white w-6 h-6"></i>
-                        </button>
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold">Assignments</h2>
+                        <button onClick={add} className="bg-blue-600 text-white p-2 rounded-full"><i data-lucide="plus"></i></button>
                     </div>
-                    
-                    {assignments.length === 0 ? (
-                        <div class="text-center p-8 text-slate-400">No active assignments.</div>
-                    ) : (
-                        assignments.map(a => (
-                            <div key={a.id} class="glass-panel p-5 rounded-2xl flex justify-between items-center group relative overflow-hidden">
-                                <div class="relative z-10">
-                                    <h4 class="font-bold text-slate-800 text-lg">{a.title}</h4>
-                                    <div class="flex items-center text-xs font-medium text-slate-500 mt-1 space-x-2">
-                                        <span class="bg-slate-200 px-2 py-0.5 rounded-md">{a.class}</span>
-                                        <span>•</span>
-                                        <span class={new Date(a.dueDate) <= new Date() ? 'text-red-500' : ''}>Due: {a.dueDate}</span>
-                                    </div>
-                                </div>
-                                <div class="flex items-center space-x-3 relative z-10">
-                                    <div class="text-right">
-                                        <span class="text-sm font-extrabold gradient-text bg-blue-100 px-3 py-1.5 rounded-lg">{a.totalTime}m</span>
-                                    </div>
-                                    <button onClick={() => deleteAssignment(a.id)} class="text-slate-300 hover:text-red-500 transition-colors bg-white p-2 rounded-lg shadow-sm">
-                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        ))
-                    )}
+                    {tasks.map(t => (
+                        <div key={t.id} className="p-4 border rounded-2xl mb-3 flex items-center justify-between">
+                            <span>{t.title}</span>
+                            <button onClick={() => setTasks(tasks.filter(x => x.id !== t.id))} className="text-red-400"><i data-lucide="trash"></i></button>
+                        </div>
+                    ))}
                 </div>
             );
-        };
+        }
 
-        const ScheduleView = ({ schedule, toggleTask, todayStr }) => (
-            <div class="animate-slide-up space-y-8">
-                <h2 class="text-2xl font-bold text-slate-800 mb-2">Smart Schedule</h2>
-                {schedule.length === 0 ? (
-                    <p class="text-slate-500 text-center py-10">Your schedule is clear.</p>
-                ) : (
-                    schedule.map(day => (
-                        <div key={day.date} class="space-y-4">
-                            <div class="flex items-center space-x-3">
-                                <div class={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide ${day.date === todayStr ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>
-                                    {day.date === todayStr ? 'Today' : new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                </div>
-                                <div class="flex-1 h-px bg-slate-200"></div>
-                                <span class="text-xs font-bold text-slate-400">{day.tasks.reduce((acc, t) => acc + t.duration, 0)} mins</span>
-                            </div>
-                            <div class="space-y-3">
-                                {day.tasks.map(task => (
-                                    <TaskCard key={task.id} task={task} toggleTask={toggleTask} />
-                                ))}
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        );
+        function CalendarView({ events, setEvents }) {
+            const addEvent = () => {
+                const title = prompt("Event name?");
+                if(title) setEvents([...events, { id: Date.now(), title }]);
+            };
+            return (
+                <div>
+                    <h2 className="text-xl font-bold mb-4">Calendar</h2>
+                    <button onClick={addEvent} className="w-full py-3 border-2 border-dashed rounded-xl mb-4 text-gray-400">+ Add Event</button>
+                    {events.map(e => (
+                        <div key={e.id} className="p-3 bg-gray-50 rounded-lg mb-2">{e.title}</div>
+                    ))}
+                </div>
+            );
+        }
 
-        // --- NEW ELITE FEATURE: POMODORO FOCUS TIMER ---
-        const FocusView = () => {
-            const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes
-            const [isActive, setIsActive] = useState(false);
-            
+        function FocusView() {
+            const [time, setTime] = useState(25 * 60);
+            const [active, setActive] = useState(false);
             useEffect(() => {
-                let interval = null;
-                if (isActive && timeLeft > 0) {
-                    interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-                } else if (timeLeft === 0) {
-                    setIsActive(false);
-                    triggerConfetti();
-                }
-                return () => clearInterval(interval);
-            }, [isActive, timeLeft]);
-
-            const toggleTimer = () => setIsActive(!isActive);
-            const resetTimer = () => { setIsActive(false); setTimeLeft(25 * 60); };
-            
-            const minutes = Math.floor(timeLeft / 60);
-            const seconds = timeLeft % 60;
-            const progress = ((25 * 60 - timeLeft) / (25 * 60)) * 100;
-
-            const triggerConfetti = () => confetti({ particleCount: 150, spread: 100 });
+                if(active && time > 0) setTimeout(() => setTime(time - 1), 1000);
+            }, [active, time]);
 
             return (
-                <div class="animate-slide-up flex flex-col items-center justify-center h-full py-10">
-                    <h2 class="text-2xl font-bold text-slate-800 mb-8">Focus Session</h2>
-                    
-                    {/* Circular Progress / Timer */}
-                    <div class="relative w-64 h-64 flex items-center justify-center glass-panel rounded-full mb-10 shadow-xl border-4 border-white">
-                        {/* Fake SVG Circle Progress */}
-                        <svg class="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                            <circle cx="50" cy="50" r="48" fill="none" stroke="#E2E8F0" stroke-width="4" />
-                            <circle cx="50" cy="50" r="48" fill="none" stroke="url(#gradient)" stroke-width="4" stroke-dasharray="301.59" stroke-dashoffset={301.59 - (301.59 * progress) / 100} class="transition-all duration-1000 ease-linear" stroke-linecap="round" />
-                            <defs>
-                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                                    <stop offset="0%" stop-color="#3B82F6" />
-                                    <stop offset="100%" stop-color="#8B5CF6" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        
-                        <div class="text-center z-10 flex flex-col items-center">
-                            <span class="text-6xl font-black text-slate-800 tracking-tighter">
-                                {minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
-                            </span>
-                            <span class="text-xs font-bold text-slate-400 tracking-widest uppercase mt-2">Deep Work</span>
-                        </div>
+                <div className="flex flex-col items-center justify-center pt-10">
+                    <div className="w-48 h-48 rounded-full border-8 border-blue-500 flex items-center justify-center text-3xl font-bold">
+                        {Math.floor(time/60)}:{String(time%60).padStart(2,'0')}
                     </div>
-
-                    <div class="flex space-x-4 w-full px-6">
-                        <button onClick={toggleTimer} class="flex-1 py-4 rounded-2xl font-bold text-lg text-white gradient-bg shadow-lg hover:shadow-xl active:scale-95 transition-all">
-                            {isActive ? 'Pause' : 'Start Focus'}
-                        </button>
-                        <button onClick={resetTimer} class="px-6 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 active:scale-95 transition-all">
-                            <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
-                        </button>
-                    </div>
+                    <button onClick={() => setActive(!active)} className="mt-8 px-8 py-3 bg-black text-white rounded-full">
+                        {active ? "Pause" : "Start Session"}
+                    </button>
                 </div>
             );
-        };
+        }
 
-        const TaskCard = ({ task, toggleTask }) => (
-            <div onClick={() => toggleTask(task.id)} class={`glass-panel p-4 rounded-2xl flex items-center cursor-pointer transition-all duration-300 transform hover:-translate-y-1 hover:shadow-md ${task.isCompleted ? 'opacity-60 bg-slate-100' : 'bg-white'}`}>
-                <div class={`w-7 h-7 rounded-full border-2 flex items-center justify-center mr-4 transition-all duration-300 ${task.isCompleted ? 'bg-blue-500 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'border-slate-300 hover:border-blue-400'}`}>
-                    {task.isCompleted && <i data-lucide="check" class="w-4 h-4 text-white"></i>}
-                </div>
-                <div class="flex-1">
-                    <h4 class={`font-bold text-[15px] transition-colors ${task.isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</h4>
-                    <p class="text-xs font-medium text-slate-500 mt-0.5">{task.class}</p>
-                </div>
-                <div class={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${task.isCompleted ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 text-blue-600'}`}>
-                    {task.duration}m
-                </div>
-            </div>
-        );
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
